@@ -44,21 +44,47 @@ func TestParse(t *testing.T) {
 	testParse(t, vars, &typedVars{}, expected)
 }
 
-type typedVars struct {
-	STRING  string
-	INT     int
-	INT8    int8
-	INT16   int16
-	INT32   int32
-	INT64   int64
-	UINT    uint
-	UINT8   uint8
-	UINT16  uint16
-	UINT32  uint32
-	UINT64  uint64
-	FLOAT32 float32
-	FLOAT64 float64
-	BOOL    bool
+func TestParseCustomNames(t *testing.T) {
+	vars := map[string]string{
+		"FOO":                  "foo",
+		"BAR":                  "42",
+		"MULTI_WORD":           "6.28318",
+		"COMPLETELY_DIFFERENT": "t",
+	}
+	expected := customNamedVars{
+		Foo:            "foo",
+		Bar:            42,
+		MultiWord:      6.28318,
+		DifferentNames: true,
+	}
+	testParse(t, vars, &customNamedVars{}, expected)
+}
+
+func TestParseDefaultVals(t *testing.T) {
+	expected := defaultVars{
+		STRING:  "foo",
+		INT:     272309480983,
+		INT8:    -4,
+		INT16:   15893,
+		INT32:   -230984,
+		INT64:   12,
+		UINT:    42,
+		UINT8:   13,
+		UINT16:  1337,
+		UINT32:  348904,
+		UINT64:  12093803,
+		FLOAT32: 0.001234,
+		FLOAT64: 23.7,
+		BOOL:    true,
+	}
+	testParse(t, nil, &defaultVars{}, expected)
+}
+
+func TestParseCustomNameAndDefaultVal(t *testing.T) {
+	expected := customNameAndDefaultVars{
+		Foo: "biz",
+	}
+	testParse(t, nil, &customNameAndDefaultVars{}, expected)
 }
 
 func TestParseWithInvalidArgs(t *testing.T) {
@@ -97,6 +123,51 @@ func TestParseWithInvalidArgs(t *testing.T) {
 			}
 		}
 	}
+}
+
+type typedVars struct {
+	STRING  string
+	INT     int
+	INT8    int8
+	INT16   int16
+	INT32   int32
+	INT64   int64
+	UINT    uint
+	UINT8   uint8
+	UINT16  uint16
+	UINT32  uint32
+	UINT64  uint64
+	FLOAT32 float32
+	FLOAT64 float64
+	BOOL    bool
+}
+
+type customNamedVars struct {
+	Foo            string  `envvar:"FOO"`
+	Bar            int     `envvar:"BAR"`
+	MultiWord      float64 `envvar:"MULTI_WORD"`
+	DifferentNames bool    `envvar:"COMPLETELY_DIFFERENT"`
+}
+
+type defaultVars struct {
+	STRING  string  `default:"foo"`
+	INT     int     `default:"272309480983"`
+	INT8    int8    `default:"-4"`
+	INT16   int16   `default:"15893"`
+	INT32   int32   `default:"-230984"`
+	INT64   int64   `default:"12"`
+	UINT    uint    `default:"42"`
+	UINT8   uint8   `default:"13"`
+	UINT16  uint16  `default:"1337"`
+	UINT32  uint32  `default:"348904"`
+	UINT64  uint64  `default:"12093803"`
+	FLOAT32 float32 `default:"0.001234"`
+	FLOAT64 float64 `default:"23.7"`
+	BOOL    bool    `default:"true"`
+}
+
+type customNameAndDefaultVars struct {
+	Foo string `envvar:"BAR" default:"biz"`
 }
 
 func testParse(t *testing.T, vars map[string]string, holder interface{}, expected interface{}) {
