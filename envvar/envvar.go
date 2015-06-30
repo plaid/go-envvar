@@ -28,6 +28,10 @@ import (
 // return an error if it is not defined. When the `default` struct tag is
 // provided, the environment variable is considered optional, and if set, the
 // value of the environment variable will override the default value.
+//
+// Parse will return an UnsetVariableError if a required environment variable
+// was not set. It will also return an error if there was a problem converting
+// environment variable values to the proper type or setting the fields of v.
 func Parse(v interface{}) error {
 	typ := reflect.TypeOf(v)
 	if typ.Kind() != reflect.Ptr || typ.Elem().Kind() != reflect.Struct {
@@ -49,7 +53,7 @@ func Parse(v interface{}) error {
 		defaultVal := field.Tag.Get("default")
 		varVal, found := syscall.Getenv(varName)
 		if !found && defaultVal == "" {
-			return fmt.Errorf("Missing required environment variable: %s", varName)
+			return UnsetVariableError{VarName: varName}
 		}
 		if defaultVal != "" && varVal == "" {
 			varVal = defaultVal
@@ -61,6 +65,20 @@ func Parse(v interface{}) error {
 	return nil
 }
 
+// UnsetVariableError is returned by Parse whenever a required environment
+// variable is not set.
+type UnsetVariableError struct {
+	// VarName is the name of the required environment variable that was not set
+	VarName string
+}
+
+// Error satisfies the error interface
+func (e UnsetVariableError) Error() string {
+	return fmt.Sprintf("envvar: Missing required environment variable: %s", e.VarName)
+}
+
+// setFieldVal first converts v to the type of structField, then uses reflection
+// to set the field to the converted value.
 func setFieldVal(structField reflect.Value, name string, v string) error {
 	switch structField.Kind() {
 	case reflect.String:

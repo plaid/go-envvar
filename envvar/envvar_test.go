@@ -87,6 +87,15 @@ func TestParseCustomNameAndDefaultVal(t *testing.T) {
 	testParse(t, nil, &customNameAndDefaultVars{}, expected)
 }
 
+func TestParseRequiredVars(t *testing.T) {
+	vars := typedVars{}
+	if err := Parse(&vars); err == nil {
+		t.Errorf("Expected error because required environment variables were not set, but got none.")
+	} else if _, ok := err.(UnsetVariableError); !ok {
+		t.Errorf("Expected error type to be UnsetVariableError but got %T", err)
+	}
+}
+
 func TestParseWithInvalidArgs(t *testing.T) {
 	testCases := []struct {
 		holder        interface{}
