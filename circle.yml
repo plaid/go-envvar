@@ -1,0 +1,12 @@
+machine:
+  environment:
+    GOPATH: /home/ubuntu/
+
+dependencies:
+  override:
+    - mkdir -p ~/src/github.com/plaid/
+    - cp -r ~/go-envvar ~/src/github.com/plaid/
+
+test:
+  override:
+    - cd ~/src/github.com/plaid/go-envvar && go test -v ./...
