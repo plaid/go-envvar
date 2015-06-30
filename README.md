@@ -1,6 +1,11 @@
 # go-envvar
+
+[![GoDoc](https://godoc.org/github.com/plaid/go-envvar/envvar?status.svg)](https://godoc.org/github.com/plaid/go-envvar/envvar)
+
 A go library for managing environment variables. It maps environment variables to
 typed fields in a struct, and supports required and optional vars with defaults.
+
+go-envvar is inspired by the javascript library https://github.com/plaid/envvar.
 
 ## Example Usage
 
