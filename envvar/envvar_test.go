@@ -87,6 +87,13 @@ func TestParseCustomNameAndDefaultVal(t *testing.T) {
 	testParse(t, nil, &customNameAndDefaultVars{}, expected)
 }
 
+func TestParseDefaultEmptyString(t *testing.T) {
+	expected := defaultEmptyStringVars{
+		Foo: "",
+	}
+	testParse(t, nil, &defaultEmptyStringVars{}, expected)
+}
+
 func TestParseRequiredVars(t *testing.T) {
 	vars := typedVars{}
 	if err := Parse(&vars); err == nil {
@@ -177,6 +184,10 @@ type defaultVars struct {
 
 type customNameAndDefaultVars struct {
 	Foo string `envvar:"BAR" default:"biz"`
+}
+
+type defaultEmptyStringVars struct {
+	Foo string `default:""`
 }
 
 func testParse(t *testing.T, vars map[string]string, holder interface{}, expected interface{}) {
