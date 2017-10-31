@@ -7,6 +7,11 @@ typed fields in a struct, and supports required and optional vars with defaults.
 
 go-envvar is inspired by the javascript library https://github.com/plaid/envvar.
 
+go-envvar supports fields of most primative types (e.g. int, string, bool,
+float64) as well as any type which implements the
+[encoding.TextUnmarshaler](https://golang.org/pkg/encoding/#TextUnmarshaler)
+interface.
+
 ## Example Usage
 
 ```go
@@ -28,9 +33,10 @@ type serverEnvVars struct {
 	MaxConns uint `envvar:"MAX_CONNECTIONS" default:"100"`
 	// Similar to GO_PORT, HOST_NAME is required.
 	HostName string `envvar:"HOST_NAME"`
-	// envvar struct tag is not required if the field name
-	// matches the envvar name.
-	HOST_NAME string
+	// Time values are also supported. Parse uses the UnmarshalText method of
+	// time.Time in order to set the value of the field. In this case, the
+	// UnmarshalText method expects the string value to be in RFC 3339 format.
+	StartTime time.Time `envvar:"START_TIME" default:"2017-10-31T14:18:00Z"`
 }
 
 func main() {

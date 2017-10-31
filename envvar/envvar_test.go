@@ -6,7 +6,9 @@ import (
 	"reflect"
 	"regexp"
 	"runtime"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestParse(t *testing.T) {
@@ -25,6 +27,8 @@ func TestParse(t *testing.T) {
 		"FLOAT32": "0.001234",
 		"FLOAT64": "23.7",
 		"BOOL":    "true",
+		"TIME":    "2017-10-31T14:18:00Z",
+		"CUSTOM":  "foo,bar,baz",
 	}
 	expected := typedVars{
 		STRING:  "foo",
@@ -41,6 +45,8 @@ func TestParse(t *testing.T) {
 		FLOAT32: 0.001234,
 		FLOAT64: 23.7,
 		BOOL:    true,
+		TIME:    time.Date(2017, 10, 31, 14, 18, 0, 0, time.UTC),
+		CUSTOM:  customUnmarshaller{strings: []string{"foo", "bar", "baz"}},
 	}
 	testParse(t, vars, &typedVars{}, expected)
 }
@@ -228,6 +234,15 @@ func expectInvalidVariableError(t *testing.T, err error) {
 	}
 }
 
+type customUnmarshaller struct {
+	strings []string
+}
+
+func (cu *customUnmarshaller) UnmarshalText(text []byte) error {
+	cu.strings = strings.Split(string(text), ",")
+	return nil
+}
+
 type typedVars struct {
 	STRING  string
 	INT     int
@@ -243,6 +258,8 @@ type typedVars struct {
 	FLOAT32 float32
 	FLOAT64 float64
 	BOOL    bool
+	TIME    time.Time
+	CUSTOM  customUnmarshaller
 }
 
 type customNamedVars struct {
