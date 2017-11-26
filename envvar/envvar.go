@@ -155,8 +155,8 @@ func setFieldVal(structField reflect.Value, name string, v string) error {
 	// Check if the struct field type implements the encoding.TextUnmarshaler
 	// interface.
 	if structField.Type().Implements(reflect.TypeOf([]encoding.TextUnmarshaler{}).Elem()) {
-		// If it does, call the UnmarshalText method using reflection.
-		results := structField.Addr().MethodByName("UnmarshalText").Call([]reflect.Value{reflect.ValueOf([]byte(v))})
+		// Call the UnmarshalText method using reflection.
+		results := structField.MethodByName("UnmarshalText").Call([]reflect.Value{reflect.ValueOf([]byte(v))})
 		if !results[0].IsNil() {
 			err := results[0].Interface().(error)
 			return fmt.Errorf("envvar: Error parsing environment variable %s: %s\n%s", name, v, err.Error())

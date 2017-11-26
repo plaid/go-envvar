@@ -29,6 +29,7 @@ func TestParse(t *testing.T) {
 		"BOOL":    "true",
 		"TIME":    "2017-10-31T14:18:00Z",
 		"CUSTOM":  "foo,bar,baz",
+		"WRAPPER": "a,b,c",
 	}
 	expected := typedVars{
 		STRING:  "foo",
@@ -47,8 +48,16 @@ func TestParse(t *testing.T) {
 		BOOL:    true,
 		TIME:    time.Date(2017, 10, 31, 14, 18, 0, 0, time.UTC),
 		CUSTOM:  customUnmarshaller{strings: []string{"foo", "bar", "baz"}},
+		WRAPPER: customUnmarshallerWrapper{um: &customUnmarshaller{strings: []string{"a", "b", "c"}}},
 	}
-	testParse(t, vars, &typedVars{}, expected)
+	// Note that we have to initialize the WRAPPER type so that its field is
+	// non-nil. No other types need to be initialized.
+	holder := &typedVars{
+		WRAPPER: customUnmarshallerWrapper{
+			um: &customUnmarshaller{},
+		},
+	}
+	testParse(t, vars, holder, expected)
 }
 
 func TestParseCustomNames(t *testing.T) {
@@ -234,13 +243,31 @@ func expectInvalidVariableError(t *testing.T, err error) {
 	}
 }
 
+// customUnmarshaller implements the UnmarshalText method.
 type customUnmarshaller struct {
 	strings []string
 }
 
+// UnmarshalText simply splits the text by the separator: ",".
 func (cu *customUnmarshaller) UnmarshalText(text []byte) error {
 	cu.strings = strings.Split(string(text), ",")
 	return nil
+}
+
+// customUnmarshallerWrapper also implements the UnmarshalText method by calling
+// it on its own *customUnmarshaller.
+type customUnmarshallerWrapper struct {
+	um *customUnmarshaller
+}
+
+// UnmarshalText simply calls um.UnmarshalText. Note that here we use a
+// non-pointer receiver. It still works because the um field is a pointer. We
+// just need to be sure to check if um is nil first.
+func (cuw customUnmarshallerWrapper) UnmarshalText(text []byte) error {
+	if cuw.um == nil {
+		return nil
+	}
+	return cuw.um.UnmarshalText(text)
 }
 
 type typedVars struct {
@@ -260,6 +287,7 @@ type typedVars struct {
 	BOOL    bool
 	TIME    time.Time
 	CUSTOM  customUnmarshaller
+	WRAPPER customUnmarshallerWrapper
 }
 
 type customNamedVars struct {
