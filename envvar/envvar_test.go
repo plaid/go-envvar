@@ -1,6 +1,7 @@
 package envvar
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"reflect"
@@ -9,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestParse(t *testing.T) {
@@ -136,7 +139,7 @@ func TestParseRequiredVars(t *testing.T) {
 	}
 }
 
-func TestParseWithInvalidArgs(t *testing.T) {
+func TestParseErrors(t *testing.T) {
 	testCases := []struct {
 		holder        interface{}
 		expectedError string
@@ -243,6 +246,12 @@ func expectInvalidVariableError(t *testing.T, err error) {
 	}
 }
 
+func TestUnmarshalTextError(t *testing.T) {
+	holder := &alwaysErrorVars{}
+	err := setFieldVal(reflect.ValueOf(holder).Elem().Field(0), "alwaysError", "")
+	require.EqualError(t, err, "envvar: Error parsing environment variable alwaysError: \nthis function always returns an error")
+}
+
 // customUnmarshaller implements the UnmarshalText method.
 type customUnmarshaller struct {
 	strings []string
@@ -268,6 +277,18 @@ func (cuw customUnmarshallerWrapper) UnmarshalText(text []byte) error {
 		return nil
 	}
 	return cuw.um.UnmarshalText(text)
+}
+
+// errorUnmarshaller implements the UnmarshalText method by always returning
+// an error.
+type alwaysErrorUmnarshaller struct{}
+
+func (eu alwaysErrorUmnarshaller) UnmarshalText(text []byte) error {
+	return errors.New("this function always returns an error")
+}
+
+type alwaysErrorVars struct {
+	AlwaysError alwaysErrorUmnarshaller
 }
 
 type typedVars struct {
