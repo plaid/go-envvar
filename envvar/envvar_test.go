@@ -274,6 +274,12 @@ func TestUnmarshalTextError(t *testing.T) {
 	require.EqualError(t, err, "envvar: Error parsing environment variable alwaysError: \nthis function always returns an error")
 }
 
+func TestUnmarshalTextErrorPtr(t *testing.T) {
+	holder := &alwaysErrorVarsPtr{}
+	err := setFieldVal(reflect.ValueOf(holder).Elem().Field(0), "alwaysErrorPtr", "")
+	require.EqualError(t, err, "envvar: Error parsing environment variable alwaysErrorPtr: \nthis function always returns an error")
+}
+
 // customUnmarshaler implements the UnmarshalText method.
 type customUnmarshaler struct {
 	strings []string
@@ -305,12 +311,24 @@ func (cuw customUnmarshalerWrapper) UnmarshalText(text []byte) error {
 // returning an error.
 type alwaysErrorUnmarshaler struct{}
 
-func (eu alwaysErrorUnmarshaler) UnmarshalText(text []byte) error {
+func (aeu alwaysErrorUnmarshaler) UnmarshalText(text []byte) error {
 	return errors.New("this function always returns an error")
 }
 
 type alwaysErrorVars struct {
 	AlwaysError alwaysErrorUnmarshaler
+}
+
+// alwaysErrorUnmarshalerPtr is like alwaysErrorUnmarshaler but implements
+// the UnmarshalText method with a pointer receiver.
+type alwaysErrorUnmarshalerPtr struct{}
+
+func (aue *alwaysErrorUnmarshalerPtr) UnmarshalText(text []byte) error {
+	return errors.New("this function always returns an error")
+}
+
+type alwaysErrorVarsPtr struct {
+	AlwaysErrorPtr alwaysErrorUnmarshalerPtr
 }
 
 type typedVars struct {
