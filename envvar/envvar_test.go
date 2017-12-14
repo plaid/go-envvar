@@ -50,14 +50,14 @@ func TestParse(t *testing.T) {
 		FLOAT64: 23.7,
 		BOOL:    true,
 		TIME:    time.Date(2017, 10, 31, 14, 18, 0, 0, time.UTC),
-		CUSTOM:  customUnmarshaller{strings: []string{"foo", "bar", "baz"}},
-		WRAPPER: customUnmarshallerWrapper{um: &customUnmarshaller{strings: []string{"a", "b", "c"}}},
+		CUSTOM:  customUnmarshaler{strings: []string{"foo", "bar", "baz"}},
+		WRAPPER: customUnmarshalerWrapper{um: &customUnmarshaler{strings: []string{"a", "b", "c"}}},
 	}
 	// Note that we have to initialize the WRAPPER type so that its field is
 	// non-nil. No other types need to be initialized.
 	holder := &typedVars{
-		WRAPPER: customUnmarshallerWrapper{
-			um: &customUnmarshaller{},
+		WRAPPER: customUnmarshalerWrapper{
+			um: &customUnmarshaler{},
 		},
 	}
 	testParse(t, vars, holder, expected)
@@ -96,11 +96,11 @@ func TestParseDefaultVals(t *testing.T) {
 		FLOAT64: 23.7,
 		BOOL:    true,
 		TIME:    time.Date(1992, 9, 29, 0, 0, 0, 0, time.UTC),
-		CUSTOM: customUnmarshaller{
+		CUSTOM: customUnmarshaler{
 			strings: []string{"one", "two", "three"},
 		},
-		WRAPPER: customUnmarshallerWrapper{
-			um: &customUnmarshaller{
+		WRAPPER: customUnmarshalerWrapper{
+			um: &customUnmarshaler{
 				strings: []string{"apple", "banana", "cranberry"},
 			},
 		},
@@ -108,8 +108,8 @@ func TestParseDefaultVals(t *testing.T) {
 	// Note that we have to initialize the WRAPPER type so that its field is
 	// non-nil. No other types need to be initialized.
 	holder := &defaultVars{
-		WRAPPER: customUnmarshallerWrapper{
-			um: &customUnmarshaller{},
+		WRAPPER: customUnmarshalerWrapper{
+			um: &customUnmarshaler{},
 		},
 	}
 	testParse(t, nil, holder, expected)
@@ -268,43 +268,43 @@ func TestUnmarshalTextError(t *testing.T) {
 	require.EqualError(t, err, "envvar: Error parsing environment variable alwaysError: \nthis function always returns an error")
 }
 
-// customUnmarshaller implements the UnmarshalText method.
-type customUnmarshaller struct {
+// customUnmarshaler implements the UnmarshalText method.
+type customUnmarshaler struct {
 	strings []string
 }
 
 // UnmarshalText simply splits the text by the separator: ",".
-func (cu *customUnmarshaller) UnmarshalText(text []byte) error {
+func (cu *customUnmarshaler) UnmarshalText(text []byte) error {
 	cu.strings = strings.Split(string(text), ",")
 	return nil
 }
 
-// customUnmarshallerWrapper also implements the UnmarshalText method by calling
-// it on its own *customUnmarshaller.
-type customUnmarshallerWrapper struct {
-	um *customUnmarshaller
+// customUnmarshalerWrapper also implements the UnmarshalText method by calling
+// it on its own *customUnmarshaler.
+type customUnmarshalerWrapper struct {
+	um *customUnmarshaler
 }
 
 // UnmarshalText simply calls um.UnmarshalText. Note that here we use a
 // non-pointer receiver. It still works because the um field is a pointer. We
 // just need to be sure to check if um is nil first.
-func (cuw customUnmarshallerWrapper) UnmarshalText(text []byte) error {
+func (cuw customUnmarshalerWrapper) UnmarshalText(text []byte) error {
 	if cuw.um == nil {
 		return nil
 	}
 	return cuw.um.UnmarshalText(text)
 }
 
-// errorUnmarshaller implements the UnmarshalText method by always returning
-// an error.
-type alwaysErrorUmnarshaller struct{}
+// alwaysErrorUnmarshaler implements the UnmarshalText method by always
+// returning an error.
+type alwaysErrorUnmarshaler struct{}
 
-func (eu alwaysErrorUmnarshaller) UnmarshalText(text []byte) error {
+func (eu alwaysErrorUnmarshaler) UnmarshalText(text []byte) error {
 	return errors.New("this function always returns an error")
 }
 
 type alwaysErrorVars struct {
-	AlwaysError alwaysErrorUmnarshaller
+	AlwaysError alwaysErrorUnmarshaler
 }
 
 type typedVars struct {
@@ -323,8 +323,8 @@ type typedVars struct {
 	FLOAT64 float64
 	BOOL    bool
 	TIME    time.Time
-	CUSTOM  customUnmarshaller
-	WRAPPER customUnmarshallerWrapper
+	CUSTOM  customUnmarshaler
+	WRAPPER customUnmarshalerWrapper
 }
 
 type customNamedVars struct {
@@ -335,23 +335,23 @@ type customNamedVars struct {
 }
 
 type defaultVars struct {
-	STRING  string                    `default:"foo"`
-	INT     int                       `default:"272309480983"`
-	INT8    int8                      `default:"-4"`
-	INT16   int16                     `default:"15893"`
-	INT32   int32                     `default:"-230984"`
-	INT64   int64                     `default:"12"`
-	UINT    uint                      `default:"42"`
-	UINT8   uint8                     `default:"13"`
-	UINT16  uint16                    `default:"1337"`
-	UINT32  uint32                    `default:"348904"`
-	UINT64  uint64                    `default:"12093803"`
-	FLOAT32 float32                   `default:"0.001234"`
-	FLOAT64 float64                   `default:"23.7"`
-	BOOL    bool                      `default:"true"`
-	TIME    time.Time                 `default:"1992-09-29T00:00:00Z"`
-	CUSTOM  customUnmarshaller        `default:"one,two,three"`
-	WRAPPER customUnmarshallerWrapper `default:"apple,banana,cranberry"`
+	STRING  string                   `default:"foo"`
+	INT     int                      `default:"272309480983"`
+	INT8    int8                     `default:"-4"`
+	INT16   int16                    `default:"15893"`
+	INT32   int32                    `default:"-230984"`
+	INT64   int64                    `default:"12"`
+	UINT    uint                     `default:"42"`
+	UINT8   uint8                    `default:"13"`
+	UINT16  uint16                   `default:"1337"`
+	UINT32  uint32                   `default:"348904"`
+	UINT64  uint64                   `default:"12093803"`
+	FLOAT32 float32                  `default:"0.001234"`
+	FLOAT64 float64                  `default:"23.7"`
+	BOOL    bool                     `default:"true"`
+	TIME    time.Time                `default:"1992-09-29T00:00:00Z"`
+	CUSTOM  customUnmarshaler        `default:"one,two,three"`
+	WRAPPER customUnmarshalerWrapper `default:"apple,banana,cranberry"`
 }
 
 type customNameAndDefaultVars struct {
