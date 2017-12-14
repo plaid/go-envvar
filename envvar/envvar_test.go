@@ -50,8 +50,14 @@ func TestParse(t *testing.T) {
 		FLOAT64: 23.7,
 		BOOL:    true,
 		TIME:    time.Date(2017, 10, 31, 14, 18, 0, 0, time.UTC),
-		CUSTOM:  customUnmarshaler{strings: []string{"foo", "bar", "baz"}},
-		WRAPPER: customUnmarshalerWrapper{um: &customUnmarshaler{strings: []string{"a", "b", "c"}}},
+		CUSTOM: customUnmarshaler{
+			strings: []string{"foo", "bar", "baz"},
+		},
+		WRAPPER: customUnmarshalerWrapper{
+			um: &customUnmarshaler{
+				strings: []string{"a", "b", "c"},
+			},
+		},
 	}
 	// Note that we have to initialize the WRAPPER type so that its field is
 	// non-nil. No other types need to be initialized.
