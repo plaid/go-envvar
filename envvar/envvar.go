@@ -4,9 +4,7 @@
 package envvar
 
 import (
-	"bytes"
 	"fmt"
-	"io"
 	"reflect"
 	"strconv"
 	"strings"
@@ -39,51 +37,57 @@ func Parse(v interface{}) error {
 	// Make sure the type of v is what we expect.
 	typ := reflect.TypeOf(v)
 	if typ.Kind() != reflect.Ptr || typ.Elem().Kind() != reflect.Struct {
-		return fmt.Errorf("envvar: Error in Parse: type must be a pointer to a struct. Got: %T", v)
+		return InvalidArgumentError{fmt.Sprintf("Error in Parse: type must be a pointer to a struct. Got: %T", v)}
 	}
 	structType := typ.Elem()
 	val := reflect.ValueOf(v)
 	if val.IsNil() {
-		return fmt.Errorf("envvar: Error in Parse: argument cannot be nil.")
+		return InvalidArgumentError{"Error in Parse: argument cannot be nil"}
 	}
+	errors := []error{}
 	structVal := val.Elem()
 	// Iterate through the fields of v and set each field.
 	for i := 0; i < structType.NumField(); i++ {
 		field := structType.Field(i)
-		varName := field.Name
-		customName := field.Tag.Get("envvar")
-		if customName != "" {
-			varName = customName
-		}
-		var varVal string
-		defaultVal, foundDefault, err := getStructTag(field, "default")
-		if err != nil {
-			return err
-		}
-		envVal, foundEnv := syscall.Getenv(varName)
-		if foundEnv {
-			// If we found an environment variable corresponding to this field. Use
-			// the value of the environment variable. This overrides the default
-			// (if any).
-			varVal = envVal
-		} else {
-			if foundDefault {
-				// If we did not find an environment variable corresponding to this
-				// field, but there is a default value, use the default value.
-				varVal = defaultVal
-			} else {
-				// If we did not find an environment variable corresponding to this
-				// field and there is not a default value, we are missing a required
-				// environment variable. Return an error.
-				return UnsetVariableError{VarName: varName}
-			}
-		}
-		// Set the value of the field.
-		if err := setFieldVal(structVal.Field(i), varName, varVal); err != nil {
-			return err
+		fieldVal := structVal.Field(i)
+		if err := parse(field, fieldVal); err != nil {
+			errors = append(errors, err)
 		}
 	}
+	if len(errors) > 0 {
+		return ErrorList{errors}
+	}
 	return nil
+}
+
+func parse(field reflect.StructField, fieldVal reflect.Value) error {
+	varName := field.Name
+	customName := field.Tag.Get("envvar")
+	if customName != "" {
+		varName = customName
+	}
+	var varVal string
+	defaultVal, foundDefault := field.Tag.Lookup("default")
+	envVal, foundEnv := syscall.Getenv(varName)
+	if foundEnv {
+		// If we found an environment variable corresponding to this field. Use
+		// the value of the environment variable. This overrides the default
+		// (if any).
+		varVal = envVal
+	} else {
+		if foundDefault {
+			// If we did not find an environment variable corresponding to this
+			// field, but there is a default value, use the default value.
+			varVal = defaultVal
+		} else {
+			// If we did not find an environment variable corresponding to this
+			// field and there is not a default value, we are missing a required
+			// environment variable. Return an error.
+			return UnsetVariableError{VarName: varName}
+		}
+	}
+	// Set the value of the field.
+	return setFieldVal(fieldVal, varName, varVal)
 }
 
 // UnsetVariableError is returned by Parse whenever a required environment
@@ -93,45 +97,51 @@ type UnsetVariableError struct {
 	VarName string
 }
 
-// Error satisfies the error interface
-func (e UnsetVariableError) Error() string {
-	return fmt.Sprintf("envvar: Missing required environment variable: %s", e.VarName)
+// InvalidVariableError is returned when a given env var cannot be parsed to
+// a given struct field.
+type InvalidVariableError struct {
+	VarName  string
+	VarValue string
+	parent   error // optional
 }
 
-// getStructTag gets struct tag value with the given key. It differs from
-// Tag.Get in that it has an additional return value that indicates whether or
-// not the key was found in the struct tag. This is required to differentiate
-// between a struct tag which specifies a default value of an empty string and
-// a struct tag which does not specify a default value.
-func getStructTag(field reflect.StructField, key string) (value string, found bool, err error) {
-	buf := bytes.NewBufferString(string(field.Tag))
-	for {
-		// Read until we reach a colon. Whatever we scan is the key (plus the
-		// colon).
-		k, err := buf.ReadString(':')
-		if err != nil {
-			if err == io.EOF {
-				return "", false, nil
-			}
-			return "", false, err
-		}
-		// Read until we reach the opening quotation mark. This is the start of
-		// the value.
-		if _, err := buf.ReadString('"'); err != nil {
-			return "", false, fmt.Errorf("envvar: Invalid struct tag for field named %s. %s", field.Name, err.Error())
-		}
-		// Read until we reach the closing quotation mark. Whatever we scan is
-		// the value (plus the closing quotation mark).
-		val, err := buf.ReadString('"')
-		if err != nil {
-			return "", false, fmt.Errorf("envvar: Invalid struct tag for field named %s. %s", field.Name, err.Error())
-		}
-		// If k is equal to the key we were looking for, we have found the value.
-		// Return it.
-		if strings.TrimSpace(k[:len(k)-1]) == key {
-			return val[:len(val)-1], true, nil
-		}
+// InvalidArgumentError is raised when an invalid argument passed.
+type InvalidArgumentError struct {
+	message string
+}
+
+// ErrorList is list of independent errors raised by Parse
+type ErrorList struct {
+	Errors []error
+}
+
+func (e InvalidArgumentError) Error() string {
+	return "envvar: " + e.message
+}
+
+// Error satisfies the error interface
+func (e UnsetVariableError) Error() string {
+	return fmt.Sprintf("Missing required environment variable: %s", e.VarName)
+}
+
+// Error satisfies the error interface
+func (e InvalidVariableError) Error() string {
+	return fmt.Sprintf("Error parsing environment variable %s: %s (%s)", e.VarName, e.VarValue, errorOrUnknown(e.parent))
+}
+
+func errorOrUnknown(err error) string {
+	if err != nil {
+		return err.Error()
 	}
+	return "unknown"
+}
+
+func (e ErrorList) Error() string {
+	allErrors := []string{}
+	for _, err := range e.Errors {
+		allErrors = append(allErrors, "envvar: "+err.Error())
+	}
+	return fmt.Sprintf(strings.Join(allErrors, "\n"))
 }
 
 // setFieldVal first converts v to the type of structField, then uses reflection
@@ -143,29 +153,29 @@ func setFieldVal(structField reflect.Value, name string, v string) error {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		vInt, err := strconv.Atoi(v)
 		if err != nil {
-			return fmt.Errorf("envvar: Error parsing environment variable %s: %s\n%s", name, v, err.Error())
+			return InvalidVariableError{name, v, err}
 		}
 		structField.SetInt(int64(vInt))
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		vUint, err := strconv.ParseUint(v, 10, 64)
 		if err != nil {
-			return fmt.Errorf("envvar: Error parsing environment variable %s: %s\n%s", name, v, err.Error())
+			return InvalidVariableError{name, v, err}
 		}
 		structField.SetUint(uint64(vUint))
 	case reflect.Float32, reflect.Float64:
 		vFloat, err := strconv.ParseFloat(v, 64)
 		if err != nil {
-			return fmt.Errorf("envvar: Error parsing environment variable %s: %s\n%s", name, v, err.Error())
+			return InvalidVariableError{name, v, err}
 		}
 		structField.SetFloat(vFloat)
 	case reflect.Bool:
 		vBool, err := strconv.ParseBool(v)
 		if err != nil {
-			return fmt.Errorf("envvar: Error parsing environment variable %s: %s\n%s", name, v, err.Error())
+			return InvalidVariableError{name, v, err}
 		}
 		structField.SetBool(vBool)
 	default:
-		return fmt.Errorf("envvar: Unsupported struct field type: %s", structField.Type().String())
+		return InvalidArgumentError{fmt.Sprintf("Unsupported struct field type: %s", structField.Type().String())}
 	}
 	return nil
 }

@@ -14,6 +14,7 @@ package main
 
 import (
 	"log"
+
 	"github.com/plaid/go-envvar/envvar"
 )
 
@@ -27,6 +28,9 @@ type serverEnvVars struct {
 	MaxConns uint `envvar:"MAX_CONNECTIONS" default:"100"`
 	// Similar to GO_PORT, HOST_NAME is required.
 	HostName string `envvar:"HOST_NAME"`
+	// envvar struct tag is not required if the field name
+	// matches the envvar name.
+	HOST_NAME string
 }
 
 func main() {

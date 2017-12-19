@@ -1,6 +1,7 @@
 package envvar
 
 import (
+	"fmt"
 	"os"
 	"reflect"
 	"regexp"
@@ -96,10 +97,27 @@ func TestParseDefaultEmptyString(t *testing.T) {
 
 func TestParseRequiredVars(t *testing.T) {
 	vars := typedVars{}
-	if err := Parse(&vars); err == nil {
+	err := Parse(&vars)
+	if err == nil {
 		t.Errorf("Expected error because required environment variables were not set, but got none.")
-	} else if _, ok := err.(UnsetVariableError); !ok {
-		t.Errorf("Expected error type to be UnsetVariableError but got %T", err)
+		return
+	}
+	errorList, ok := err.(ErrorList)
+	if !ok {
+		t.Errorf("Expected error type to be ErrorList but got %T", err)
+		return
+	}
+	if len(errorList.Errors) == 0 {
+		t.Errorf("Got zero ErrorList")
+		return
+	}
+	for _, err := range errorList.Errors {
+		if err == nil {
+			t.Errorf("Got nil error from ErrorList")
+		}
+		if _, ok := err.(UnsetVariableError); !ok {
+			t.Errorf("Expected UnsetVariableError but got %T", err)
+		}
 	}
 }
 
@@ -138,6 +156,75 @@ func TestParseWithInvalidArgs(t *testing.T) {
 				t.Errorf("Expected error message to match `%s`\nbut got: %s", testCase.expectedError, err.Error())
 			}
 		}
+	}
+}
+
+func TestSetFieldValErrorInt(t *testing.T) {
+	var x = 3
+	var xptr = &x
+	value := reflect.ValueOf(xptr).Elem()
+	expectInvalidVariableError(t, setFieldVal(value, "name", "abc"))
+	if err := setFieldVal(value, "name", "15"); err != nil {
+		t.Errorf("Unexpected error on setFieldVal(): %T", err)
+	} else if x != 15 {
+		t.Errorf("Expected value to be changed, but did not.")
+	}
+}
+func TestSetFieldValErrorUint(t *testing.T) {
+	var x = uint(3)
+	var xptr = &x
+	value := reflect.ValueOf(xptr).Elem()
+	expectInvalidVariableError(t, setFieldVal(value, "name", "-3"))
+	if err := setFieldVal(value, "name", "15"); err != nil {
+		t.Errorf("Unexpected error on setFieldVal(): %T", err)
+	} else if x != 15 {
+		t.Errorf("Expected value to be changed, but did not.")
+	}
+}
+
+func TestSetFieldValErrorFloat(t *testing.T) {
+	var x = 3.2
+	var xptr = &x
+	value := reflect.ValueOf(xptr).Elem()
+	expectInvalidVariableError(t, setFieldVal(value, "name", "abc"))
+	if err := setFieldVal(value, "name", "42.3"); err != nil {
+		t.Errorf("Unexpected error on setFieldVal(): %T", err)
+	} else if x != 42.3 {
+		t.Errorf("Expected value to be changed, but did not.")
+	}
+}
+func TestSetFieldValErrorBool(t *testing.T) {
+	var x = false
+	var xptr = &x
+	value := reflect.ValueOf(xptr).Elem()
+	expectInvalidVariableError(t, setFieldVal(value, "name", "not-bool"))
+	if err := setFieldVal(value, "name", "true"); err != nil {
+		t.Errorf("Unexpected error on setFieldVal(): %T", err)
+	} else if !x {
+		t.Errorf("Expected value to be changed, but did not.")
+	}
+}
+
+func TestErrorList(t *testing.T) {
+	errorList := ErrorList{
+		[]error{
+			fmt.Errorf("First Error"),
+			fmt.Errorf("Second Error"),
+			fmt.Errorf("Third Error"),
+		},
+	}
+	if errorList.Error() != `envvar: First Error
+envvar: Second Error
+envvar: Third Error` {
+		t.Errorf("Error list's string representation is incorrect.")
+	}
+}
+
+func expectInvalidVariableError(t *testing.T, err error) {
+	if err == nil {
+		t.Errorf("Expected InvalidVariableError, but got nil error")
+	} else if _, ok := err.(InvalidVariableError); !ok {
+		t.Errorf("Expected InvalidVariableError, but got %s", err.Error())
 	}
 }
 
