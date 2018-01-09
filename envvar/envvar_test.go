@@ -10,8 +10,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/stretchr/testify/require"
 )
 
 func TestParse(t *testing.T) {
@@ -271,13 +269,21 @@ func expectInvalidVariableError(t *testing.T, err error) {
 func TestUnmarshalTextError(t *testing.T) {
 	holder := &alwaysErrorVars{}
 	err := setFieldVal(reflect.ValueOf(holder).Elem().Field(0), "alwaysError", "")
-	require.EqualError(t, err, "envvar: Error parsing environment variable alwaysError: \nthis function always returns an error")
+	if err == nil {
+		t.Errorf("Expected InvalidVariableError, but got nil error")
+	} else if _, ok := err.(InvalidVariableError); !ok {
+		t.Errorf("Expected InvalidVariableError, but got %s", err.Error())
+	}
 }
 
 func TestUnmarshalTextErrorPtr(t *testing.T) {
 	holder := &alwaysErrorVarsPtr{}
 	err := setFieldVal(reflect.ValueOf(holder).Elem().Field(0), "alwaysErrorPtr", "")
-	require.EqualError(t, err, "envvar: Error parsing environment variable alwaysErrorPtr: \nthis function always returns an error")
+	if err == nil {
+		t.Errorf("Expected InvalidVariableError, but got nil error")
+	} else if _, ok := err.(InvalidVariableError); !ok {
+		t.Errorf("Expected InvalidVariableError, but got %s", err.Error())
+	}
 }
 
 // customUnmarshaler implements the UnmarshalText method.

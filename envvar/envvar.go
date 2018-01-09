@@ -159,7 +159,7 @@ func setFieldVal(structField reflect.Value, name string, v string) error {
 		results := structField.MethodByName("UnmarshalText").Call([]reflect.Value{reflect.ValueOf([]byte(v))})
 		if !results[0].IsNil() {
 			err := results[0].Interface().(error)
-			return fmt.Errorf("envvar: Error parsing environment variable %s: %s\n%s", name, v, err.Error())
+			return InvalidVariableError{name, v, err}
 		}
 		return nil
 	}
@@ -178,7 +178,7 @@ func setFieldVal(structField reflect.Value, name string, v string) error {
 			results := structField.Addr().MethodByName("UnmarshalText").Call([]reflect.Value{reflect.ValueOf([]byte(v))})
 			if !results[0].IsNil() {
 				err := results[0].Interface().(error)
-				return fmt.Errorf("envvar: Error parsing environment variable %s: %s\n%s", name, v, err.Error())
+				return InvalidVariableError{name, v, err}
 			}
 			return nil
 		}
