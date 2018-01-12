@@ -4,6 +4,7 @@
 package envvar
 
 import (
+	"encoding"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -33,6 +34,9 @@ import (
 // Parse will return an UnsetVariableError if a required environment variable
 // was not set. It will also return an error if there was a problem converting
 // environment variable values to the proper type or setting the fields of v.
+//
+// If a field of v implements the encoding.TextUnmarshaler interface, Parse will
+// call the UnmarshalText method on the field in order to set its value.
 func Parse(v interface{}) error {
 	// Make sure the type of v is what we expect.
 	typ := reflect.TypeOf(v)
@@ -147,6 +151,42 @@ func (e ErrorList) Error() string {
 // setFieldVal first converts v to the type of structField, then uses reflection
 // to set the field to the converted value.
 func setFieldVal(structField reflect.Value, name string, v string) error {
+
+	// Check if the struct field type implements the encoding.TextUnmarshaler
+	// interface.
+	if structField.Type().Implements(reflect.TypeOf([]encoding.TextUnmarshaler{}).Elem()) {
+		// Call the UnmarshalText method using reflection.
+		results := structField.MethodByName("UnmarshalText").Call([]reflect.Value{reflect.ValueOf([]byte(v))})
+		if !results[0].IsNil() {
+			err := results[0].Interface().(error)
+			return InvalidVariableError{name, v, err}
+		}
+		return nil
+	}
+
+	// Check if *a pointer to* the struct field type implements the
+	// encoding.TextUnmarshaler interface. If it does and the struct value is
+	// addressable, call the UnmarshalText method using reflection.
+	if reflect.PtrTo(structField.Type()).Implements(reflect.TypeOf([]encoding.TextUnmarshaler{}).Elem()) {
+		// CanAddr tells us if reflect is able to get a pointer to the struct field
+		// value. This should always be true, because the Parse method is strict
+		// about accepting a pointer to a struct type. However, if it's not true the
+		// Addr() call will panic, so it is good practice to leave this check in
+		// place. (In the reflect package, a struct field is considered addressable
+		// if we originally received a pointer to the struct type).
+		if structField.CanAddr() {
+			results := structField.Addr().MethodByName("UnmarshalText").Call([]reflect.Value{reflect.ValueOf([]byte(v))})
+			if !results[0].IsNil() {
+				err := results[0].Interface().(error)
+				return InvalidVariableError{name, v, err}
+			}
+			return nil
+		}
+	}
+
+	// If the field type does not implement the encoding.TextUnmarshaler
+	// interface, we can try decoding some basic primitive types and setting the
+	// value of the struct field with reflection.
 	switch structField.Kind() {
 	case reflect.String:
 		structField.SetString(v)
