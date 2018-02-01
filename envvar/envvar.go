@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 )
 
 // Parse parses environment variables into v, which must be a pointer to a
@@ -191,11 +192,20 @@ func setFieldVal(structField reflect.Value, name string, v string) error {
 	case reflect.String:
 		structField.SetString(v)
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		vInt, err := strconv.Atoi(v)
-		if err != nil {
-			return InvalidVariableError{name, v, err}
+		if structField.Type() == reflect.TypeOf(time.Duration(0)) {
+			// special handling for duration types.
+			dur, err := time.ParseDuration(v)
+			if err != nil {
+				return InvalidVariableError{name, v, err}
+			}
+			structField.SetInt(int64(dur))
+		} else {
+			vInt, err := strconv.Atoi(v)
+			if err != nil {
+				return InvalidVariableError{name, v, err}
+			}
+			structField.SetInt(int64(vInt))
 		}
-		structField.SetInt(int64(vInt))
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		vUint, err := strconv.ParseUint(v, 10, 64)
 		if err != nil {
