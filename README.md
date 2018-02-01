@@ -37,6 +37,8 @@ type serverEnvVars struct {
 	// time.Time in order to set the value of the field. In this case, the
 	// UnmarshalText method expects the string value to be in RFC 3339 format.
 	StartTime time.Time `envvar:"START_TIME" default:"2017-10-31T14:18:00Z"`
+	// Duration is supported via time.ParseDuration()
+	Timeout time.Duration `envvar:"TIMEOUT" default:"30m"`
 }
 
 func main() {
