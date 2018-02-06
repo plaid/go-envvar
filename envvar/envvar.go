@@ -49,14 +49,43 @@ func Parse(v interface{}) error {
 	if val.IsNil() {
 		return InvalidArgumentError{"Error in Parse: argument cannot be nil"}
 	}
-	errors := []error{}
 	structVal := val.Elem()
+	ss := structStack{"", structType, structVal}
+	return ss.parseStruct()
+}
+
+// structStack represents the current instance of struct that the logic
+// is injecting envvars into.
+type structStack struct {
+	envPrefix  string
+	structType reflect.Type
+	structVal  reflect.Value
+}
+
+func (ss structStack) push(
+	envPrefix string,
+	structType reflect.Type,
+	structVal reflect.Value,
+) structStack {
+	return structStack{
+		envPrefix:  ss.envPrefix + envPrefix,
+		structType: structType,
+		structVal:  structVal,
+	}
+}
+
+func (ss structStack) parseStruct() error {
+	errors := []error{}
 	// Iterate through the fields of v and set each field.
-	for i := 0; i < structType.NumField(); i++ {
-		field := structType.Field(i)
-		fieldVal := structVal.Field(i)
-		if err := parse(field, fieldVal); err != nil {
-			errors = append(errors, err)
+	for i := 0; i < ss.structType.NumField(); i++ {
+		field := ss.structType.Field(i)
+		fieldVal := ss.structVal.Field(i)
+		if err := ss.parseField(field, fieldVal); err != nil {
+			if suberrors, ok := err.(ErrorList); ok {
+				errors = append(errors, suberrors.Errors...)
+			} else {
+				errors = append(errors, err)
+			}
 		}
 	}
 	if len(errors) > 0 {
@@ -65,15 +94,39 @@ func Parse(v interface{}) error {
 	return nil
 }
 
-func parse(field reflect.StructField, fieldVal reflect.Value) error {
+func (ss structStack) parseField(field reflect.StructField, fieldVal reflect.Value) error {
 	varName := field.Name
 	customName := field.Tag.Get("envvar")
 	if customName != "" {
 		varName = customName
 	}
+	if success, _ := cleverMaybeTextUnmarshaler(fieldVal); !success {
+		// subfield is a struct or pointer to a struct,
+		// and does NOT implement TextUnmarshaller, so treat it
+		// as a recursive inner struct.
+
+		if fieldVal.Type().Kind() == reflect.Struct {
+			newSS := ss.push(customName, field.Type, fieldVal)
+			if err := foundDefaultTagError(field); err != nil {
+				return err
+			}
+			return newSS.parseStruct()
+		} else if fieldVal.Type().Kind() == reflect.Ptr && fieldVal.Type().Elem().Kind() == reflect.Struct {
+			if fieldVal.IsNil() {
+				fieldVal.Set(reflect.New(field.Type.Elem()))
+			}
+			if err := foundDefaultTagError(field); err != nil {
+				return err
+			}
+			newSS := ss.push(customName, field.Type.Elem(), fieldVal.Elem())
+			return newSS.parseStruct()
+		}
+	}
+
 	var varVal string
 	defaultVal, foundDefault := field.Tag.Lookup("default")
-	envVal, foundEnv := syscall.Getenv(varName)
+	derivedVarName := ss.envPrefix + varName
+	envVal, foundEnv := syscall.Getenv(derivedVarName)
 	if foundEnv {
 		// If we found an environment variable corresponding to this field. Use
 		// the value of the environment variable. This overrides the default
@@ -88,11 +141,22 @@ func parse(field reflect.StructField, fieldVal reflect.Value) error {
 			// If we did not find an environment variable corresponding to this
 			// field and there is not a default value, we are missing a required
 			// environment variable. Return an error.
-			return UnsetVariableError{VarName: varName}
+			return UnsetVariableError{VarName: derivedVarName}
 		}
 	}
 	// Set the value of the field.
-	return setFieldVal(fieldVal, varName, varVal)
+	return setFieldVal(fieldVal, derivedVarName, varVal)
+}
+
+func foundDefaultTagError(field reflect.StructField) error {
+	// struct fields do not support default tags.
+	if _, foundDefault := field.Tag.Lookup("default"); foundDefault {
+		return InvalidFieldError{
+			Name:    field.Name,
+			Message: "default tag is not supported for nested structs.",
+		}
+	}
+	return nil
 }
 
 // UnsetVariableError is returned by Parse whenever a required environment
@@ -100,6 +164,13 @@ func parse(field reflect.StructField, fieldVal reflect.Value) error {
 type UnsetVariableError struct {
 	// VarName is the name of the required environment variable that was not set
 	VarName string
+}
+
+// InvalidFieldError is returned by Parse whenever a given struct field
+// is unsupported.
+type InvalidFieldError struct {
+	Name    string
+	Message string
 }
 
 // InvalidVariableError is returned when a given env var cannot be parsed to
@@ -134,6 +205,10 @@ func (e InvalidVariableError) Error() string {
 	return fmt.Sprintf("Error parsing environment variable %s: %s (%s)", e.VarName, e.VarValue, errorOrUnknown(e.parent))
 }
 
+func (e InvalidFieldError) Error() string {
+	return fmt.Sprintf("Unsupported struct field %s: %s", e.Name, e.Message)
+
+}
 func errorOrUnknown(err error) string {
 	if err != nil {
 		return err.Error()
@@ -149,40 +224,57 @@ func (e ErrorList) Error() string {
 	return fmt.Sprintf(strings.Join(allErrors, "\n"))
 }
 
-// setFieldVal first converts v to the type of structField, then uses reflection
-// to set the field to the converted value.
-func setFieldVal(structField reflect.Value, name string, v string) error {
-
-	// Check if the struct field type implements the encoding.TextUnmarshaler
-	// interface.
-	if structField.Type().Implements(reflect.TypeOf([]encoding.TextUnmarshaler{}).Elem()) {
-		// Call the UnmarshalText method using reflection.
-		results := structField.MethodByName("UnmarshalText").Call([]reflect.Value{reflect.ValueOf([]byte(v))})
-		if !results[0].IsNil() {
-			err := results[0].Interface().(error)
-			return InvalidVariableError{name, v, err}
+// determine whether a given reflect.Value is TextUnmarshaler, without
+// doing something clever.
+func maybeTextUnmarshaler(val reflect.Value) (bool, encoding.TextUnmarshaler) {
+	if val.CanInterface() {
+		casted, ok := val.Interface().(encoding.TextUnmarshaler)
+		if !ok {
+			return false, nil
 		}
-		return nil
+		return true, casted
 	}
+	return false, nil
+}
 
+// similar to maybeTextUnmarshaler, but attempt more clever things such as
+// seeing the value as a pointer type.
+func cleverMaybeTextUnmarshaler(structField reflect.Value) (bool, encoding.TextUnmarshaler) {
+	// Check if the struct field type implements the encoding.TextUnmarshaler interface.
+	if success, m := maybeTextUnmarshaler(structField); success {
+		return true, m
+	}
 	// Check if *a pointer to* the struct field type implements the
 	// encoding.TextUnmarshaler interface. If it does and the struct value is
 	// addressable, call the UnmarshalText method using reflection.
-	if reflect.PtrTo(structField.Type()).Implements(reflect.TypeOf([]encoding.TextUnmarshaler{}).Elem()) {
-		// CanAddr tells us if reflect is able to get a pointer to the struct field
-		// value. This should always be true, because the Parse method is strict
-		// about accepting a pointer to a struct type. However, if it's not true the
-		// Addr() call will panic, so it is good practice to leave this check in
-		// place. (In the reflect package, a struct field is considered addressable
-		// if we originally received a pointer to the struct type).
-		if structField.CanAddr() {
-			results := structField.Addr().MethodByName("UnmarshalText").Call([]reflect.Value{reflect.ValueOf([]byte(v))})
-			if !results[0].IsNil() {
-				err := results[0].Interface().(error)
-				return InvalidVariableError{name, v, err}
-			}
-			return nil
+	if structField.CanAddr() {
+		if success, m := maybeTextUnmarshaler(structField.Addr()); success {
+			return true, m
 		}
+	}
+	return false, nil
+}
+
+// setUnmarshFieldVal sees whether a given field can be decoded via TextUnmarshaler interface.
+// first bool determines whether the underlying type implements TextUnmarshaler
+// and unmarshalling has been attempted.
+func setUnmarshFieldVal(structField reflect.Value, name string, v string) (bool, error) {
+	if success, m := cleverMaybeTextUnmarshaler(structField); success {
+		err := m.UnmarshalText([]byte(v))
+		if err != nil {
+			return true, InvalidVariableError{name, v, err}
+		}
+		return true, nil
+	}
+	return false, nil
+}
+
+// setFieldVal first converts v to the type of structField, then uses reflection
+// to set the field to the converted value.
+func setFieldVal(structField reflect.Value, name string, v string) error {
+	attempted, err := setUnmarshFieldVal(structField, name, v)
+	if attempted {
+		return err
 	}
 
 	// If the field type does not implement the encoding.TextUnmarshaler
@@ -225,7 +317,10 @@ func setFieldVal(structField reflect.Value, name string, v string) error {
 		}
 		structField.SetBool(vBool)
 	default:
-		return InvalidArgumentError{fmt.Sprintf("Unsupported struct field type: %s", structField.Type().String())}
+		return InvalidFieldError{
+			Name:    name,
+			Message: fmt.Sprintf("Unsupported struct field type: %s", structField.Type().String()),
+		}
 	}
 	return nil
 }
