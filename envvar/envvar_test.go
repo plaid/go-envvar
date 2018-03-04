@@ -10,6 +10,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParse(t *testing.T) {
@@ -81,6 +84,111 @@ func TestParseCustomNames(t *testing.T) {
 		DifferentNames: true,
 	}
 	testParse(t, vars, &customNamedVars{}, expected)
+}
+
+func TestParseNested(t *testing.T) {
+	type Inner struct {
+		X string `env:"X"`
+	}
+	type Outer struct {
+		A Inner
+		B Inner
+	}
+	vars := map[string]string{
+		"X": "1",
+	}
+	expected := Outer{
+		Inner{"1"},
+		Inner{"1"},
+	}
+	testParse(t, vars, &Outer{}, expected)
+}
+
+func TestParseNestedAlias(t *testing.T) {
+	type Inner struct {
+		X string `envvar:"X"`
+	}
+	type Outer struct {
+		A Inner `envvar:"A_"`
+		B Inner `envvar:"B_"`
+	}
+	vars := map[string]string{
+		"A_X": "1",
+		"B_X": "2",
+	}
+	expected := Outer{
+		Inner{"1"},
+		Inner{"2"},
+	}
+	testParse(t, vars, &Outer{}, expected)
+}
+func TestParseInnerError(t *testing.T) {
+	type Inner struct {
+		X string `envvar:"X"`
+	}
+	type Outer struct {
+		A *Inner `envvar:"A_"`
+	}
+	withEnv(t, map[string]string{}, func() {
+		dest := Outer{}
+		assert.EqualError(t, Parse(&dest), "envvar: Missing required environment variable: A_X")
+	})
+}
+
+func TestParseDefaultOnStruct(t *testing.T) {
+	type Inner struct {
+		X string `envvar:"X"`
+	}
+	type Outer struct {
+		Aptr *Inner `envvar:"A_" default:""`
+		A    Inner  `envvar:"A_" default:""`
+	}
+	withEnv(t, map[string]string{}, func() {
+		dest := Outer{}
+		maybeErrList := Parse(&dest)
+		if assert.Error(t, maybeErrList) {
+			errList, ok := maybeErrList.(ErrorList)
+			require.True(t, ok, "must cast to errorlist")
+			require.Equal(t, 2, len(errList.Errors))
+			assert.EqualError(t, errList.Errors[0], "Unsupported struct field Aptr: default tag is not supported for nested structs.")
+			assert.EqualError(t, errList.Errors[1], "Unsupported struct field A: default tag is not supported for nested structs.")
+		}
+	})
+}
+
+func TestParseNestedAliasPointer(t *testing.T) {
+	type Inner struct {
+		X string `envvar:"X"`
+	}
+	type Outer struct {
+		A *Inner `envvar:"A_"`
+		B *Inner `envvar:"B_"`
+	}
+	vars := map[string]string{
+		"A_X": "1",
+		"B_X": "2",
+	}
+	expected := Outer{
+		&Inner{"1"},
+		&Inner{"2"},
+	}
+	testParse(t, vars, &Outer{A: &Inner{}}, expected)
+}
+
+func TestParseEmbedded(t *testing.T) {
+	type Inner struct {
+		X string `envvar:"X"`
+	}
+	type Outer struct {
+		Inner
+	}
+	vars := map[string]string{
+		"X": "1",
+	}
+	expected := Outer{
+		Inner{"1"},
+	}
+	testParse(t, vars, &Outer{}, expected)
 }
 
 func TestParseDefaultVals(t *testing.T) {
@@ -395,6 +503,17 @@ type defaultEmptyStringVars struct {
 }
 
 func testParse(t *testing.T, vars map[string]string, holder interface{}, expected interface{}) {
+	withEnv(t, vars, func() {
+		if err := Parse(holder); err != nil {
+			t.Error(err)
+		}
+		if !reflect.DeepEqual(reflect.ValueOf(holder).Elem().Interface(), expected) {
+			t.Errorf("Parsed struct was incorrect.\nExpected: %+v\nBut got:  %+v", expected, holder)
+		}
+	})
+}
+
+func withEnv(t *testing.T, vars map[string]string, fn func()) {
 	for name, val := range vars {
 		if err := os.Setenv(name, val); err != nil {
 			t.Fatalf("Problem setting env var: %s", err.Error())
@@ -405,10 +524,5 @@ func testParse(t *testing.T, vars map[string]string, holder interface{}, expecte
 			}
 		}(name)
 	}
-	if err := Parse(holder); err != nil {
-		t.Error(err)
-	}
-	if !reflect.DeepEqual(reflect.ValueOf(holder).Elem().Interface(), expected) {
-		t.Errorf("Parsed struct was incorrect.\nExpected: %+v\nBut got:  %+v", expected, holder)
-	}
+	fn()
 }

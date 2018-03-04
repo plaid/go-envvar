@@ -49,3 +49,31 @@ func main() {
 	// Do something with the parsed environment variables...
 }
 ```
+
+### Nested structs
+
+go-envvar also supports nested structs.
+
+```go
+type credential struct {
+	Username string `envvar:"USERNAME"`
+	Password string `envvar:"PASSWORD"`
+}
+
+type serverEnvVars struct {
+	ServiceA credential `envvar: "SERVICE_A_`
+	ServiceB credential `envvar: "SERVICE_B_`
+}
+
+func main() {
+	vars := serverEnvVars{}
+	err := envvar.Parse(&vars)
+	// your application logic
+}
+```
+
+In this example, envvar `SERVICE_A_USERNAME` will be mapped to the field `vars.ServiceA.Username`.
+`envvar` struct tags on a struct field are interpreted as prefixes for envvar names
+for the corresponding structs.
+
+Inner struct fields can either be a struct, pointer to a struct, or an embedded field.
