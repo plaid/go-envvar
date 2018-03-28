@@ -3,7 +3,6 @@ package envvar
 import (
 	"errors"
 	"fmt"
-	"os"
 	"reflect"
 	"regexp"
 	"runtime"
@@ -129,9 +128,9 @@ func TestParseInnerError(t *testing.T) {
 	type Outer struct {
 		A *Inner `envvar:"A_"`
 	}
-	withEnv(t, map[string]string{}, func() {
+	withEnv(t, map[string]string{}, func(getenv GetenvFn) {
 		dest := Outer{}
-		assert.EqualError(t, Parse(&dest), "envvar: Missing required environment variable: A_X")
+		assert.EqualError(t, ParseWithConfig(&dest, Config{Getenv: getenv}), "envvar: Missing required environment variable: A_X")
 	})
 }
 
@@ -143,9 +142,9 @@ func TestParseDefaultOnStruct(t *testing.T) {
 		Aptr *Inner `envvar:"A_" default:""`
 		A    Inner  `envvar:"A_" default:""`
 	}
-	withEnv(t, map[string]string{}, func() {
+	withEnv(t, map[string]string{}, func(getenv GetenvFn) {
 		dest := Outer{}
-		maybeErrList := Parse(&dest)
+		maybeErrList := ParseWithConfig(&dest, Config{Getenv: getenv})
 		if assert.Error(t, maybeErrList) {
 			errList, ok := maybeErrList.(ErrorList)
 			require.True(t, ok, "must cast to errorlist")
@@ -503,8 +502,8 @@ type defaultEmptyStringVars struct {
 }
 
 func testParse(t *testing.T, vars map[string]string, holder interface{}, expected interface{}) {
-	withEnv(t, vars, func() {
-		if err := Parse(holder); err != nil {
+	withEnv(t, vars, func(getenv GetenvFn) {
+		if err := ParseWithConfig(holder, Config{Getenv: getenv}); err != nil {
 			t.Error(err)
 		}
 		if !reflect.DeepEqual(reflect.ValueOf(holder).Elem().Interface(), expected) {
@@ -513,16 +512,14 @@ func testParse(t *testing.T, vars map[string]string, holder interface{}, expecte
 	})
 }
 
-func withEnv(t *testing.T, vars map[string]string, fn func()) {
-	for name, val := range vars {
-		if err := os.Setenv(name, val); err != nil {
-			t.Fatalf("Problem setting env var: %s", err.Error())
-		}
-		defer func(name string) {
-			if err := os.Unsetenv(name); err != nil {
-				t.Fatalf("Problem unsetting env var: %s", err.Error())
-			}
-		}(name)
-	}
-	fn()
+func withEnv(t *testing.T, vars map[string]string, fn func(getenvFn GetenvFn)) {
+	getenv := customenv(vars).getenv
+	fn(getenv)
+}
+
+type customenv map[string]string
+
+func (cenv customenv) getenv(key string) (value string, found bool) {
+	value, found = cenv[key]
+	return
 }

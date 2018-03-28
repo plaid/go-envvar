@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"reflect"
 	"strconv"
-	"strings"
 	"syscall"
 	"time"
 )
@@ -39,6 +38,27 @@ import (
 // If a field of v implements the encoding.TextUnmarshaler interface, Parse will
 // call the UnmarshalText method on the field in order to set its value.
 func Parse(v interface{}) error {
+	return ParseWithConfig(v, Config{Getenv: syscall.Getenv})
+}
+
+// Config is used to control the parsing behavior
+// of the go-envvar package.
+type Config struct {
+	// Getenv is a custom function to retrieve envvars with.
+	Getenv func(key string) (value string, found bool)
+	// initial prefix to fetch envvars for.
+	Prefix string
+}
+
+// GetenvFn is a custom function to retrieve envvars.
+//
+// given a key, it returns (value, true)
+// if a given envvar exists, ("", false) otherwise.
+// syscall.Getenv should satisfy this type signature.
+type GetenvFn func(key string) (value string, found bool)
+
+// ParseWithConfig is ...
+func ParseWithConfig(v interface{}, config Config) error {
 	// Make sure the type of v is what we expect.
 	typ := reflect.TypeOf(v)
 	if typ.Kind() != reflect.Ptr || typ.Elem().Kind() != reflect.Struct {
@@ -50,7 +70,10 @@ func Parse(v interface{}) error {
 		return InvalidArgumentError{"Error in Parse: argument cannot be nil"}
 	}
 	structVal := val.Elem()
-	ss := structStack{"", structType, structVal}
+	if config.Getenv == nil {
+		config.Getenv = syscall.Getenv
+	}
+	ss := structStack{config.Prefix, structType, structVal, &config}
 	return ss.parseStruct()
 }
 
@@ -60,6 +83,7 @@ type structStack struct {
 	envPrefix  string
 	structType reflect.Type
 	structVal  reflect.Value
+	config     *Config
 }
 
 func (ss structStack) push(
@@ -71,6 +95,7 @@ func (ss structStack) push(
 		envPrefix:  ss.envPrefix + envPrefix,
 		structType: structType,
 		structVal:  structVal,
+		config:     ss.config,
 	}
 }
 
@@ -126,7 +151,7 @@ func (ss structStack) parseField(field reflect.StructField, fieldVal reflect.Val
 	var varVal string
 	defaultVal, foundDefault := field.Tag.Lookup("default")
 	derivedVarName := ss.envPrefix + varName
-	envVal, foundEnv := syscall.Getenv(derivedVarName)
+	envVal, foundEnv := ss.config.Getenv(derivedVarName)
 	if foundEnv {
 		// If we found an environment variable corresponding to this field. Use
 		// the value of the environment variable. This overrides the default
@@ -157,71 +182,6 @@ func foundDefaultTagError(field reflect.StructField) error {
 		}
 	}
 	return nil
-}
-
-// UnsetVariableError is returned by Parse whenever a required environment
-// variable is not set.
-type UnsetVariableError struct {
-	// VarName is the name of the required environment variable that was not set
-	VarName string
-}
-
-// InvalidFieldError is returned by Parse whenever a given struct field
-// is unsupported.
-type InvalidFieldError struct {
-	Name    string
-	Message string
-}
-
-// InvalidVariableError is returned when a given env var cannot be parsed to
-// a given struct field.
-type InvalidVariableError struct {
-	VarName  string
-	VarValue string
-	parent   error // optional
-}
-
-// InvalidArgumentError is raised when an invalid argument passed.
-type InvalidArgumentError struct {
-	message string
-}
-
-// ErrorList is list of independent errors raised by Parse
-type ErrorList struct {
-	Errors []error
-}
-
-func (e InvalidArgumentError) Error() string {
-	return "envvar: " + e.message
-}
-
-// Error satisfies the error interface
-func (e UnsetVariableError) Error() string {
-	return fmt.Sprintf("Missing required environment variable: %s", e.VarName)
-}
-
-// Error satisfies the error interface
-func (e InvalidVariableError) Error() string {
-	return fmt.Sprintf("Error parsing environment variable %s: %s (%s)", e.VarName, e.VarValue, errorOrUnknown(e.parent))
-}
-
-func (e InvalidFieldError) Error() string {
-	return fmt.Sprintf("Unsupported struct field %s: %s", e.Name, e.Message)
-
-}
-func errorOrUnknown(err error) string {
-	if err != nil {
-		return err.Error()
-	}
-	return "unknown"
-}
-
-func (e ErrorList) Error() string {
-	allErrors := []string{}
-	for _, err := range e.Errors {
-		allErrors = append(allErrors, "envvar: "+err.Error())
-	}
-	return fmt.Sprintf(strings.Join(allErrors, "\n"))
 }
 
 // determine whether a given reflect.Value is TextUnmarshaler, without
