@@ -46,8 +46,6 @@ func Parse(v interface{}) error {
 type Config struct {
 	// Getenv is a custom function to retrieve envvars with.
 	Getenv func(key string) (value string, found bool)
-	// initial prefix to fetch envvars for.
-	Prefix string
 }
 
 // GetenvFn is a custom function to retrieve envvars.
@@ -57,7 +55,7 @@ type Config struct {
 // syscall.Getenv should satisfy this type signature.
 type GetenvFn func(key string) (value string, found bool)
 
-// ParseWithConfig is ...
+// ParseWithConfig allows the call to Parse() with custom configurations.
 func ParseWithConfig(v interface{}, config Config) error {
 	// Make sure the type of v is what we expect.
 	typ := reflect.TypeOf(v)
@@ -73,17 +71,17 @@ func ParseWithConfig(v interface{}, config Config) error {
 	if config.Getenv == nil {
 		config.Getenv = syscall.Getenv
 	}
-	ss := structStack{config.Prefix, structType, structVal, &config}
+	ss := structStack{"", structType, structVal, &config}
 	return ss.parseStruct()
 }
 
 // structStack represents the current instance of struct that the logic
 // is injecting envvars into.
 type structStack struct {
-	envPrefix  string
-	structType reflect.Type
-	structVal  reflect.Value
-	config     *Config
+	envPrefix  string        // prefix for the envvars.
+	structType reflect.Type  // type of the current struct that is being parsed.
+	structVal  reflect.Value // value of the current struct that is being parsed.
+	config     *Config       // reference to the config object passed to ParseWithConfig()
 }
 
 func (ss structStack) push(
