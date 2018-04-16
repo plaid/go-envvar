@@ -77,3 +77,9 @@ In this example, envvar `SERVICE_A_USERNAME` will be mapped to the field `vars.S
 for the corresponding structs.
 
 Inner struct fields can either be a struct, pointer to a struct, or an embedded field.
+
+## Mocking & Custom behavior.
+
+`ParseWithConfig` can be used to control the behavior of envvar parsing. It supports
+
+* `Getenv` - customize the behavior of obtaining an envvar. By default it uses `syscall.Getenv`.
