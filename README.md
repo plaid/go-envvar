@@ -7,7 +7,7 @@ typed fields in a struct, and supports required and optional vars with defaults.
 
 go-envvar is inspired by the javascript library https://github.com/plaid/envvar.
 
-go-envvar supports fields of most primative types (e.g. int, string, bool,
+go-envvar supports fields of most primitive types (e.g. int, string, bool,
 float64) as well as any type which implements the
 [encoding.TextUnmarshaler](https://golang.org/pkg/encoding/#TextUnmarshaler)
 interface.
