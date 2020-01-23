@@ -23,7 +23,10 @@ import (
 // struct tag `envvar` can be used to specify the name of the environment
 // variable that corresponds to a field. If the `envvar` struct tag is not
 // provided, the default is to look for an environment variable with the same
-// name as the field. The struct tag `default` can be used to set the default
+// name as the field. If the `envar` struct tag is set to "-", the field will be
+// ignored by the envvar package.
+//
+// The struct tag `default` can be used to set the default
 // value for a field. The default value must be a string, but will be converted
 // to match the type of the field as needed. If the `default` struct tag is not
 // provided, the corresponding environment variable is required, and Parse will
@@ -120,6 +123,10 @@ func (ss structStack) parseStruct() error {
 func (ss structStack) parseField(field reflect.StructField, fieldVal reflect.Value) error {
 	varName := field.Name
 	customName := field.Tag.Get("envvar")
+	if customName == "-" {
+		// The struct tag "-" means we should skip this field.
+		return nil
+	}
 	if customName != "" {
 		varName = customName
 	}
