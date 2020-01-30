@@ -241,6 +241,21 @@ func TestParseDefaultEmptyString(t *testing.T) {
 	testParse(t, nil, &defaultEmptyStringVars{}, expected)
 }
 
+func TestParseIgnore(t *testing.T) {
+	vars := map[string]string{
+		"Foo":         "foo value",
+		"Bar":         "bar value",
+		"FooIgnored":  "ignored foo value",
+		"BarIgnored":  "ignored bar value",
+		"FuncIgnored": "ignored function value",
+	}
+	expected := someIngoredFields{
+		Foo: "foo value",
+		Bar: "bar value",
+	}
+	testParse(t, vars, &someIngoredFields{}, expected)
+}
+
 func TestParseRequiredVars(t *testing.T) {
 	vars := typedVars{}
 	err := Parse(&vars)
@@ -470,6 +485,14 @@ type customNamedVars struct {
 	Bar            int     `envvar:"BAR"`
 	MultiWord      float64 `envvar:"MULTI_WORD"`
 	DifferentNames bool    `envvar:"COMPLETELY_DIFFERENT"`
+}
+
+type someIngoredFields struct {
+	Foo         string
+	Bar         string
+	FooIgnored  string `envvar:"-"`
+	BarIgnored  int    `envvar:"-"`
+	FuncIgnored func() `envvar:"-"` // type func() can't be parsed, so this will only work if we ignore it
 }
 
 type defaultVars struct {
