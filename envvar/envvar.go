@@ -101,14 +101,14 @@ func (ss structStack) push(
 }
 
 func (ss structStack) parseStruct() error {
-	errors := []error{}
+	var errors []error
 	// Iterate through the fields of v and set each field.
 	for i := 0; i < ss.structType.NumField(); i++ {
 		field := ss.structType.Field(i)
 		fieldVal := ss.structVal.Field(i)
 		if err := ss.parseField(field, fieldVal); err != nil {
-			if suberrors, ok := err.(ErrorList); ok {
-				errors = append(errors, suberrors.Errors...)
+			if subErrors, ok := err.(ErrorList); ok {
+				errors = append(errors, subErrors.Errors...)
 			} else {
 				errors = append(errors, err)
 			}
@@ -157,22 +157,21 @@ func (ss structStack) parseField(field reflect.StructField, fieldVal reflect.Val
 	defaultVal, foundDefault := field.Tag.Lookup("default")
 	derivedVarName := ss.envPrefix + varName
 	envVal, foundEnv := ss.config.Getenv(derivedVarName)
-	if foundEnv {
+	switch {
+	case foundEnv:
 		// If we found an environment variable corresponding to this field. Use
 		// the value of the environment variable. This overrides the default
 		// (if any).
 		varVal = envVal
-	} else {
-		if foundDefault {
-			// If we did not find an environment variable corresponding to this
-			// field, but there is a default value, use the default value.
-			varVal = defaultVal
-		} else {
-			// If we did not find an environment variable corresponding to this
-			// field and there is not a default value, we are missing a required
-			// environment variable. Return an error.
-			return UnsetVariableError{VarName: derivedVarName}
-		}
+	case foundDefault:
+		// If we did not find an environment variable corresponding to this
+		// field, but there is a default value, use the default value.
+		varVal = defaultVal
+	default:
+		// If we did not find an environment variable corresponding to this
+		// field and there is not a default value, we are missing a required
+		// environment variable. Return an error.
+		return UnsetVariableError{VarName: derivedVarName}
 	}
 	// Set the value of the field.
 	return setFieldVal(fieldVal, derivedVarName, varVal)
@@ -193,11 +192,11 @@ func foundDefaultTagError(field reflect.StructField) error {
 // doing something clever.
 func maybeTextUnmarshaler(val reflect.Value) (bool, encoding.TextUnmarshaler) {
 	if val.CanInterface() {
-		casted, ok := val.Interface().(encoding.TextUnmarshaler)
-		if !ok {
+		if casted, ok := val.Interface().(encoding.TextUnmarshaler); !ok {
 			return false, nil
+		} else {
+			return true, casted
 		}
-		return true, casted
 	}
 	return false, nil
 }
@@ -225,8 +224,7 @@ func cleverMaybeTextUnmarshaler(structField reflect.Value) (bool, encoding.TextU
 // and unmarshalling has been attempted.
 func setUnmarshFieldVal(structField reflect.Value, name string, v string) (bool, error) {
 	if success, m := cleverMaybeTextUnmarshaler(structField); success {
-		err := m.UnmarshalText([]byte(v))
-		if err != nil {
+		if err := m.UnmarshalText([]byte(v)); err != nil {
 			return true, InvalidVariableError{name, v, err}
 		}
 		return true, nil
