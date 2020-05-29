@@ -63,9 +63,9 @@ func errorOrUnknown(err error) string {
 }
 
 func (e ErrorList) Error() string {
-	allErrors := []string{}
+	var allErrors []string
 	for _, err := range e.Errors {
 		allErrors = append(allErrors, "envvar: "+err.Error())
 	}
-	return fmt.Sprintf(strings.Join(allErrors, "\n"))
+	return fmt.Sprint(strings.Join(allErrors, "\n"))
 }
