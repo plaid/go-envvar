@@ -19,6 +19,7 @@ package main
 
 import (
 	"log"
+	"time"
 
 	"github.com/plaid/go-envvar/envvar"
 )
@@ -61,8 +62,8 @@ type credential struct {
 }
 
 type serverEnvVars struct {
-	ServiceA credential `envvar: "SERVICE_A_`
-	ServiceB credential `envvar: "SERVICE_B_`
+	ServiceA credential `envvar:"SERVICE_A_"`
+	ServiceB credential `envvar:"SERVICE_B_"`
 }
 
 func main() {
